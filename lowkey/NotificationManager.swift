@@ -14,20 +14,39 @@ class NotificationManager: ObservableObject {
     private init() {}
     
     func requestPermission() async -> Bool {
+        print("🔔 Requesting notification permissions...")
         do {
-            return try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            if granted {
+                print("✅ Notification permissions granted")
+            } else {
+                print("❌ Notification permissions denied")
+            }
+            return granted
         } catch {
-            print("Error requesting notification permission: \(error)")
+            print("❌ Error requesting notification permission: \(error.localizedDescription)")
             return false
         }
     }
     
     func scheduleNotifications(for person: lowkeyPerson) {
+        print("📅 Starting to schedule notifications for \(person.name) (ID: \(person.id.uuidString))")
+        print("📅 Frequency: \(person.nudgeFrequency.displayName)")
+        
         // Cancel existing notifications for this person
         cancelNotifications(for: person)
         
         // Schedule new notifications based on their frequency
         let scheduleDates = getScheduleDates(for: person.nudgeFrequency)
+        print("📅 Generated \(scheduleDates.count) notification dates")
+        
+        if scheduleDates.isEmpty {
+            print("⚠️ No future dates generated for \(person.name)")
+            return
+        }
+        
+        var successCount = 0
+        var errorCount = 0
         
         for (index, date) in scheduleDates.enumerated() {
             let identifier = "\(person.id.uuidString)-\(index)"
@@ -45,21 +64,41 @@ class NotificationManager: ObservableObject {
             
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
             
+            print("📅 Scheduling notification \(index + 1)/\(scheduleDates.count) for \(date.formatted(date: .abbreviated, time: .shortened))")
+            
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
-                    print("Error scheduling notification: \(error)")
+                    print("❌ Error scheduling notification \(identifier): \(error.localizedDescription)")
+                    errorCount += 1
+                } else {
+                    print("✅ Successfully scheduled notification \(identifier)")
+                    successCount += 1
+                }
+                
+                // Log summary when all notifications are processed
+                if successCount + errorCount == scheduleDates.count {
+                    print("📅 Completed scheduling for \(person.name): \(successCount) successful, \(errorCount) errors")
                 }
             }
         }
     }
     
     func cancelNotifications(for person: lowkeyPerson) {
+        print("🗑️ Canceling existing notifications for \(person.name) (ID: \(person.id.uuidString))")
+        
         UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
             let identifiersToCancel = requests
                 .map { $0.identifier }
                 .filter { $0.hasPrefix(person.id.uuidString) }
             
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToCancel)
+            print("🗑️ Found \(identifiersToCancel.count) existing notifications to cancel")
+            
+            if !identifiersToCancel.isEmpty {
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiersToCancel)
+                print("✅ Canceled \(identifiersToCancel.count) notifications for \(person.name)")
+            } else {
+                print("ℹ️ No existing notifications found for \(person.name)")
+            }
         }
     }
     
@@ -150,15 +189,22 @@ class NotificationManager: ObservableObject {
     // MARK: - Debug and Enumeration Methods
     
     func getAllPendingNotifications() async -> [UNNotificationRequest] {
-        return await UNUserNotificationCenter.current().pendingNotificationRequests()
+        print("📋 Fetching all pending notifications...")
+        let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        print("📋 Found \(requests.count) total pending notifications")
+        return requests
     }
     
     func getNotificationsForPerson(_ person: lowkeyPerson) async -> [UNNotificationRequest] {
+        print("📋 Fetching notifications for \(person.name)...")
         let allRequests = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        return allRequests.filter { $0.identifier.hasPrefix(person.id.uuidString) }
+        let personRequests = allRequests.filter { $0.identifier.hasPrefix(person.id.uuidString) }
+        print("📋 Found \(personRequests.count) notifications for \(person.name)")
+        return personRequests
     }
     
     func getUpcomingNotificationsForPerson(_ person: lowkeyPerson) async -> [(date: Date, content: String)] {
+        print("📋 Getting upcoming notifications for \(person.name)...")
         let requests = await getNotificationsForPerson(person)
         var notifications: [(date: Date, content: String)] = []
         
@@ -166,16 +212,44 @@ class NotificationManager: ObservableObject {
             if let trigger = request.trigger as? UNCalendarNotificationTrigger,
                let date = trigger.nextTriggerDate() {
                 notifications.append((date: date, content: request.content.body))
+            } else {
+                print("⚠️ Could not get trigger date for notification \(request.identifier)")
             }
         }
         
         // Sort by date
         notifications.sort { $0.date < $1.date }
+        print("📋 Returning \(notifications.count) upcoming notifications for \(person.name)")
         return notifications
     }
     
     func getNotificationCount() async -> Int {
         let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        return requests.count
+        let count = requests.count
+        print("📊 Total pending notifications: \(count)")
+        return count
+    }
+    
+    func printAllNotifications() async {
+        let requests = await getAllPendingNotifications()
+        print("=== All Pending Notifications (\(requests.count)) ===")
+        
+        let sortedRequests = requests.sorted { 
+            let date1 = ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? Date.distantFuture
+            let date2 = ($1.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? Date.distantFuture
+            return date1 < date2
+        }
+        
+        for request in sortedRequests {
+            let personId = String(request.identifier.prefix(36)) // UUID length
+            let triggerDate = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
+            
+            print("ID: \(request.identifier)")
+            print("Person: \(personId)")
+            print("Title: \(request.content.title)")
+            print("Body: \(request.content.body)")
+            print("Scheduled: \(triggerDate?.formatted() ?? "Unknown")")
+            print("---")
+        }
     }
 }
