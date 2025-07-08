@@ -108,111 +108,6 @@ class NotificationManager: ObservableObject {
         }
     }
     
-    private func getScheduleDates(for frequency: NudgeFrequency) -> [Date] {
-        let calendar = Calendar.current
-        let now = Date()
-        var dates: [Date] = []
-        
-        // Default notification time: 10 AM
-        let notificationHour = 10
-        
-        // Only schedule for the next 2 days to stay well under the 64 notification limit
-        let maxDays = 2
-        
-        switch frequency {
-        case .fewPerDay:
-            // 3 times a day for next 2 days only
-            for day in 0..<maxDays {
-                for hour in [9, 14, 19] { // 9 AM, 2 PM, 7 PM
-                    if let date = calendar.date(byAdding: .day, value: day, to: now),
-                       let scheduledDate = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: date),
-                       scheduledDate > now {
-                        dates.append(scheduledDate)
-                    }
-                }
-            }
-            
-        case .daily:
-            // Once daily for next 2 days only
-            for day in 1...maxDays {
-                if let date = calendar.date(byAdding: .day, value: day, to: now),
-                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                    dates.append(scheduledDate)
-                }
-            }
-            
-        case .alternateDays:
-            // Every other day - check next 4 days to find up to 2 notifications
-            for day in stride(from: 1, through: 4, by: 1) {
-                if day % 2 == 0, // Only even days (alternate days)
-                   let date = calendar.date(byAdding: .day, value: day, to: now),
-                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date),
-                   dates.count < 2 { // Limit to 2 notifications max
-                    dates.append(scheduledDate)
-                }
-            }
-            
-        case .fewPerWeek:
-            // 3 times per week (Mon, Wed, Fri) - only schedule for next 2 days
-            for day in 1...maxDays {
-                if let date = calendar.date(byAdding: .day, value: day, to: now) {
-                    let weekday = calendar.component(.weekday, from: date)
-                    // Monday = 2, Wednesday = 4, Friday = 6
-                    if [2, 4, 6].contains(weekday),
-                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                        dates.append(scheduledDate)
-                    }
-                }
-            }
-            
-        case .weekly:
-            // Once per week - only schedule if within next 2 days
-            let dayOfWeek = calendar.component(.weekday, from: now)
-            for day in 1...maxDays {
-                if let date = calendar.date(byAdding: .day, value: day, to: now) {
-                    let targetWeekday = calendar.component(.weekday, from: date)
-                    if targetWeekday == dayOfWeek, // Same day of week as today
-                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                        dates.append(scheduledDate)
-                        break // Only one per week
-                    }
-                }
-            }
-            
-        case .monthly:
-            // Once per month - only schedule if the monthly date falls within next 2 days
-            let dayOfMonth = calendar.component(.day, from: now)
-            for day in 1...maxDays {
-                if let date = calendar.date(byAdding: .day, value: day, to: now) {
-                    let targetDayOfMonth = calendar.component(.day, from: date)
-                    if targetDayOfMonth == dayOfMonth,
-                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                        dates.append(scheduledDate)
-                        break
-                    }
-                }
-            }
-            
-        case .quarterly:
-            // Once per quarter - very unlikely to fall within 2 days, but check anyway
-            let dayOfYear = calendar.ordinality(of: .day, in: .year, for: now) ?? 0
-            for day in 1...maxDays {
-                if let date = calendar.date(byAdding: .day, value: day, to: now) {
-                    let targetDayOfYear = calendar.ordinality(of: .day, in: .year, for: date) ?? 0
-                    // Quarterly would be roughly every 90 days
-                    if targetDayOfYear % 90 == dayOfYear % 90,
-                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                        dates.append(scheduledDate)
-                        break
-                    }
-                }
-            }
-        }
-        
-        // Return all dates (no artificial limit since we're only looking at 2 days)
-        return dates
-    }
-    
     /// Smart scheduling that considers when person was last nudged
     private func getSmartScheduleDates(for person: lowkeyPerson) -> [Date] {
         let calendar = Calendar.current
@@ -388,38 +283,21 @@ class NotificationManager: ObservableObject {
     /// Check if a person needs more notifications and refresh if needed
     private func refreshNotificationsForPerson(_ person: lowkeyPerson) async {
         let upcomingNotifications = await getUpcomingNotificationsForPerson(person)
-        
-        // Check if they have any notifications in the next 2 days
         let notificationsInNext2Days = upcomingNotifications.filter { notification in
             let twoDaysFromNow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
             return notification.date <= twoDaysFromNow
         }
         
         print("📊 \(person.name) has \(notificationsInNext2Days.count) notifications in next 2 days")
-        print("📅 \(person.name) next due: \(person.timeUntilNextNudge)")
         
-        // Check if they're due for a nudge but don't have notifications scheduled
-        if person.isDueForNudge && notificationsInNext2Days.isEmpty {
-            print("🔄 \(person.name) is due for nudge but has no notifications - refreshing")
-            scheduleNotifications(for: person)
-        } else if notificationsInNext2Days.isEmpty && person.nextNudgeDate <= Calendar.current.date(byAdding: .day, value: 2, to: Date())! {
-            print("🔄 \(person.name) will be due within 2 days but has no notifications - refreshing")
+        // If they have fewer than expected for their frequency, refresh them
+        let expectedMinimum = getExpectedNotificationsInTwoDays(for: person.nudgeFrequency)
+        if notificationsInNext2Days.count < expectedMinimum {
+            print("🔄 Refreshing notifications for \(person.name) (\(notificationsInNext2Days.count) < \(expectedMinimum))")
             scheduleNotifications(for: person)
         } else {
-            print("✅ \(person.name) has sufficient notifications or not due yet")
+            print("✅ \(person.name) has sufficient notifications")
         }
-    }
-    
-    /// Call this when user manually reaches out to someone (to reset their nudge timer)
-    func markPersonAsContacted(_ person: lowkeyPerson) {
-        print("👋 Marking \(person.name) as contacted - resetting nudge timer")
-        person.markAsNudged()
-        
-        // Cancel any pending notifications since they just reached out
-        cancelNotifications(for: person)
-        
-        // Reschedule based on the new last contact date
-        scheduleNotifications(for: person)
     }
     
     /// Calculate how many notifications we expect for a frequency in a 2-day window
