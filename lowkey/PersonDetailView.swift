@@ -108,7 +108,12 @@ struct PersonDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingEditView) {
+        .sheet(isPresented: $showingEditView, onDismiss: {
+            // Reload notifications when returning from edit view
+            Task {
+                await loadNotifications()
+            }
+        }) {
             EditPersonView(person: person)
         }
         .task {
