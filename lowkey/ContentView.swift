@@ -12,6 +12,8 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var people: [lowkeyPerson]
     @State private var showingAddPerson = false
+    @State private var personToDelete: lowkeyPerson?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         NavigationSplitView {
@@ -29,7 +31,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                .onDelete(perform: deleteItems)
+                .onDelete(perform: requestDeleteItems)
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -61,18 +63,33 @@ struct ContentView: View {
         .sheet(isPresented: $showingAddPerson) {
             AddPersonView()
         }
+        .alert("Delete Person", isPresented: $showingDeleteConfirmation, presenting: personToDelete) { person in
+            Button("Delete", role: .destructive) {
+                deletePersonConfirmed(person)
+            }
+            Button("Cancel", role: .cancel) {
+                personToDelete = nil
+            }
+        } message: { person in
+            Text("Are you sure you want to delete \(person.name)? This action cannot be undone.")
+        }
     }
 
     private func addPerson() {
         showingAddPerson = true
     }
 
-    private func deleteItems(offsets: IndexSet) {
+    private func requestDeleteItems(offsets: IndexSet) {
+        guard let index = offsets.first else { return }
+        personToDelete = people[index]
+        showingDeleteConfirmation = true
+    }
+
+    private func deletePersonConfirmed(_ person: lowkeyPerson) {
         withAnimation {
-            for index in offsets {
-                modelContext.delete(people[index])
-            }
+            modelContext.delete(person)
         }
+        personToDelete = nil
     }
 }
 
