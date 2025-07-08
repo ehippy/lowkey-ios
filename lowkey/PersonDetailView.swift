@@ -13,6 +13,23 @@ struct PersonDetailView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                if let photo = person.photo {
+                    Image(uiImage: photo)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 120)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 2))
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 120))
+                        .foregroundColor(.gray.opacity(0.5))
+                }
+                
+                Spacer()
+            }
+            
             VStack(alignment: .leading, spacing: 8) {
                 Text(person.name)
                     .font(.largeTitle)

@@ -22,12 +22,29 @@ struct ContentView: View {
                     NavigationLink {
                         PersonDetailView(person: person)
                     } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(person.name)
-                                .font(.headline)
-                            Text("\(person.relationshipType.displayName) • \(person.nudgeFrequency.displayName)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                        HStack(spacing: 12) {
+                            if let photo = person.photo {
+                                Image(uiImage: photo)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 50, height: 50)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                            } else {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.gray.opacity(0.5))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(person.name)
+                                    .font(.headline)
+                                Text("\(person.relationshipType.displayName) • \(person.nudgeFrequency.displayName)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
                         }
                     }
                 }
