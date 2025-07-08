@@ -36,12 +36,12 @@ class NotificationManager: ObservableObject {
         // Cancel existing notifications for this person
         cancelNotifications(for: person)
         
-        // Schedule new notifications based on their frequency
-        let scheduleDates = getScheduleDates(for: person.nudgeFrequency)
-        print("📅 Generated \(scheduleDates.count) notification dates")
+        // Use smart scheduling that considers last nudge date
+        let scheduleDates = getSmartScheduleDates(for: person)
+        print("📅 Generated \(scheduleDates.count) smart notification dates")
         
         if scheduleDates.isEmpty {
-            print("⚠️ No future dates generated for \(person.name)")
+            print("⚠️ No notifications needed for \(person.name) in the next 2 days")
             return
         }
         
@@ -80,6 +80,12 @@ class NotificationManager: ObservableObject {
                     print("📅 Completed scheduling for \(person.name): \(successCount) successful, \(errorCount) errors")
                 }
             }
+        }
+        
+        // Update the last nudge date to now since we're scheduling notifications
+        // (This represents when we "nudged" them by setting up the notifications)
+        if !scheduleDates.isEmpty {
+            person.lastNudgeDate = Date()
         }
     }
     
@@ -207,6 +213,86 @@ class NotificationManager: ObservableObject {
         return dates
     }
     
+    /// Smart scheduling that considers when person was last nudged
+    private func getSmartScheduleDates(for person: lowkeyPerson) -> [Date] {
+        let calendar = Calendar.current
+        let now = Date()
+        var dates: [Date] = []
+        
+        // Default notification time: 10 AM
+        let notificationHour = 10
+        
+        // Calculate when the next nudge should be based on their last nudge
+        let nextNudgeDate = person.nextNudgeDate
+        
+        print("📅 \(person.name): Last nudged \(person.lastNudgeDate?.formatted() ?? "never"), next due \(nextNudgeDate.formatted())")
+        
+        // Only schedule notifications from the next due date forward, within our 2-day window
+        let twoDaysFromNow = calendar.date(byAdding: .day, value: 2, to: now) ?? now
+        
+        // If they're not due until after our 2-day window, don't schedule anything
+        if nextNudgeDate > twoDaysFromNow {
+            print("📅 \(person.name): Next nudge (\(nextNudgeDate.formatted())) is beyond 2-day window")
+            return []
+        }
+        
+        // If they're due now or in the past, start scheduling from now
+        let startDate = max(nextNudgeDate, now)
+        
+        switch person.nudgeFrequency {
+        case .fewPerDay:
+            // Schedule every 6-8 hours from the start date
+            var currentDate = startDate
+            while currentDate <= twoDaysFromNow && dates.count < 6 {
+                if let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: currentDate),
+                   scheduledDate > now {
+                    dates.append(scheduledDate)
+                }
+                currentDate = calendar.date(byAdding: .hour, value: 8, to: currentDate) ?? currentDate
+            }
+            
+        case .daily:
+            // Schedule once per day from start date
+            if let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: startDate),
+               scheduledDate > now {
+                dates.append(scheduledDate)
+            }
+            // Maybe one more if it's within the 2-day window
+            if let nextDay = calendar.date(byAdding: .day, value: 1, to: startDate),
+               nextDay <= twoDaysFromNow,
+               let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: nextDay) {
+                dates.append(scheduledDate)
+            }
+            
+        case .alternateDays:
+            // Schedule for the start date if it's due
+            if startDate <= now.addingTimeInterval(86400), // Within next day
+               let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: startDate),
+               scheduledDate > now {
+                dates.append(scheduledDate)
+            }
+            
+        case .fewPerWeek:
+            // Schedule if it's a Monday, Wednesday, or Friday and within window
+            let weekday = calendar.component(.weekday, from: startDate)
+            if [2, 4, 6].contains(weekday), // Mon, Wed, Fri
+               let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: startDate),
+               scheduledDate > now {
+                dates.append(scheduledDate)
+            }
+            
+        case .weekly, .monthly, .quarterly:
+            // Schedule once if due within the window
+            if startDate <= twoDaysFromNow,
+               let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: startDate),
+               scheduledDate > now {
+                dates.append(scheduledDate)
+            }
+        }
+        
+        return dates
+    }
+    
     // MARK: - Debug and Enumeration Methods
     
     func getAllPendingNotifications() async -> [UNNotificationRequest] {
@@ -302,21 +388,38 @@ class NotificationManager: ObservableObject {
     /// Check if a person needs more notifications and refresh if needed
     private func refreshNotificationsForPerson(_ person: lowkeyPerson) async {
         let upcomingNotifications = await getUpcomingNotificationsForPerson(person)
+        
+        // Check if they have any notifications in the next 2 days
         let notificationsInNext2Days = upcomingNotifications.filter { notification in
             let twoDaysFromNow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
             return notification.date <= twoDaysFromNow
         }
         
         print("📊 \(person.name) has \(notificationsInNext2Days.count) notifications in next 2 days")
+        print("📅 \(person.name) next due: \(person.timeUntilNextNudge)")
         
-        // If they have fewer than expected for their frequency, refresh them
-        let expectedMinimum = getExpectedNotificationsInTwoDays(for: person.nudgeFrequency)
-        if notificationsInNext2Days.count < expectedMinimum {
-            print("🔄 Refreshing notifications for \(person.name) (\(notificationsInNext2Days.count) < \(expectedMinimum))")
+        // Check if they're due for a nudge but don't have notifications scheduled
+        if person.isDueForNudge && notificationsInNext2Days.isEmpty {
+            print("🔄 \(person.name) is due for nudge but has no notifications - refreshing")
+            scheduleNotifications(for: person)
+        } else if notificationsInNext2Days.isEmpty && person.nextNudgeDate <= Calendar.current.date(byAdding: .day, value: 2, to: Date())! {
+            print("🔄 \(person.name) will be due within 2 days but has no notifications - refreshing")
             scheduleNotifications(for: person)
         } else {
-            print("✅ \(person.name) has sufficient notifications")
+            print("✅ \(person.name) has sufficient notifications or not due yet")
         }
+    }
+    
+    /// Call this when user manually reaches out to someone (to reset their nudge timer)
+    func markPersonAsContacted(_ person: lowkeyPerson) {
+        print("👋 Marking \(person.name) as contacted - resetting nudge timer")
+        person.markAsNudged()
+        
+        // Cancel any pending notifications since they just reached out
+        cancelNotifications(for: person)
+        
+        // Reschedule based on the new last contact date
+        scheduleNotifications(for: person)
     }
     
     /// Calculate how many notifications we expect for a frequency in a 2-day window
