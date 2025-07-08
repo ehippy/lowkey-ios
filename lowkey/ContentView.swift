@@ -25,7 +25,7 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(person.name)
                                 .font(.headline)
-                            Text(person.relationshipType.displayName)
+                            Text("\(person.relationshipType.displayName) • \(person.nudgeFrequency.displayName)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
