@@ -136,6 +136,9 @@ struct EditPersonView: View {
         person.nudgeFrequency = nudgeFrequency
         person.setPhoto(profileImage)
         
+        // Schedule notifications for this person
+        NotificationManager.shared.scheduleNotifications(for: person)
+        
         dismiss()
     }
 }

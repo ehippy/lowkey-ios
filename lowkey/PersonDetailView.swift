@@ -6,10 +6,13 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 struct PersonDetailView: View {
     let person: lowkeyPerson
     @State private var showingEditView = false
+    @State private var upcomingNotifications: [(date: Date, content: String)] = []
+    @State private var isLoadingNotifications = true
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -49,6 +52,51 @@ struct PersonDetailView: View {
                     .foregroundColor(.secondary)
             }
             
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Upcoming Notifications")
+                    .font(.headline)
+                
+                if isLoadingNotifications {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading notifications...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if upcomingNotifications.isEmpty {
+                    Text("No upcoming notifications scheduled")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(upcomingNotifications.prefix(5).enumerated()), id: \.offset) { index, notification in
+                            HStack {
+                                Text(notification.date.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                    .frame(width: 100, alignment: .leading)
+                                
+                                Text(notification.content)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                            }
+                            .padding(.vertical, 1)
+                        }
+                        
+                        if upcomingNotifications.count > 5 {
+                            Text("+ \(upcomingNotifications.count - 5) more...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .italic()
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            
             Spacer()
         }
         .padding()
@@ -63,6 +111,18 @@ struct PersonDetailView: View {
         .sheet(isPresented: $showingEditView) {
             EditPersonView(person: person)
         }
+        .task {
+            await loadNotifications()
+        }
+        .refreshable {
+            await loadNotifications()
+        }
+    }
+    
+    private func loadNotifications() async {
+        isLoadingNotifications = true
+        upcomingNotifications = await NotificationManager.shared.getUpcomingNotificationsForPerson(person)
+        isLoadingNotifications = false
     }
 }
 

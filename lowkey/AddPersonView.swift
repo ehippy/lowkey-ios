@@ -78,6 +78,10 @@ struct AddPersonView: View {
         )
         
         modelContext.insert(newPerson)
+        
+        // Schedule notifications for this person
+        NotificationManager.shared.scheduleNotifications(for: newPerson)
+        
         dismiss()
     }
 }

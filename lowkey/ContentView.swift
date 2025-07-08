@@ -103,6 +103,9 @@ struct ContentView: View {
     }
 
     private func deletePersonConfirmed(_ person: lowkeyPerson) {
+        // Cancel notifications for this person
+        NotificationManager.shared.cancelNotifications(for: person)
+        
         withAnimation {
             modelContext.delete(person)
         }

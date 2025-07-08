@@ -11,6 +11,7 @@ import UIKit
 
 @Model
 class lowkeyPerson {
+    var id: UUID
     var name: String
     var relationshipType: RelationshipType
     var nudgeFrequency: NudgeFrequency
@@ -20,6 +21,7 @@ class lowkeyPerson {
          relationshipType: RelationshipType,
          nudgeFrequency: NudgeFrequency,
          photoData: Data? = nil) {
+        self.id = UUID()
         self.name = name
         self.relationshipType = relationshipType
         self.nudgeFrequency = nudgeFrequency
