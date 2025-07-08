@@ -110,10 +110,13 @@ class NotificationManager: ObservableObject {
         // Default notification time: 10 AM
         let notificationHour = 10
         
+        // Only schedule for the next 2 days to stay well under the 64 notification limit
+        let maxDays = 2
+        
         switch frequency {
         case .fewPerDay:
-            // 3 times a day for 14 days (42 notifications max)
-            for day in 0..<14 {
+            // 3 times a day for next 2 days only
+            for day in 0..<maxDays {
                 for hour in [9, 14, 19] { // 9 AM, 2 PM, 7 PM
                     if let date = calendar.date(byAdding: .day, value: day, to: now),
                        let scheduledDate = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: date),
@@ -124,8 +127,8 @@ class NotificationManager: ObservableObject {
             }
             
         case .daily:
-            // Once daily for 30 days
-            for day in 1...30 {
+            // Once daily for next 2 days only
+            for day in 1...maxDays {
                 if let date = calendar.date(byAdding: .day, value: day, to: now),
                    let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
                     dates.append(scheduledDate)
@@ -133,57 +136,75 @@ class NotificationManager: ObservableObject {
             }
             
         case .alternateDays:
-            // Every other day for 60 days
-            for day in stride(from: 2, through: 60, by: 2) {
-                if let date = calendar.date(byAdding: .day, value: day, to: now),
-                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
+            // Every other day - check next 4 days to find up to 2 notifications
+            for day in stride(from: 1, through: 4, by: 1) {
+                if day % 2 == 0, // Only even days (alternate days)
+                   let date = calendar.date(byAdding: .day, value: day, to: now),
+                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date),
+                   dates.count < 2 { // Limit to 2 notifications max
                     dates.append(scheduledDate)
                 }
             }
             
         case .fewPerWeek:
-            // 3 times per week (Mon, Wed, Fri) for 8 weeks
-            for week in 0..<8 {
-                for weekday in [2, 4, 6] { // Monday, Wednesday, Friday
-                    if let date = calendar.date(byAdding: .weekOfYear, value: week, to: now),
-                       let scheduledDate = calendar.date(bySetting: .weekday, value: weekday, of: date),
-                       let finalDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: scheduledDate),
-                       finalDate > now {
-                        dates.append(finalDate)
+            // 3 times per week (Mon, Wed, Fri) - only schedule for next 2 days
+            for day in 1...maxDays {
+                if let date = calendar.date(byAdding: .day, value: day, to: now) {
+                    let weekday = calendar.component(.weekday, from: date)
+                    // Monday = 2, Wednesday = 4, Friday = 6
+                    if [2, 4, 6].contains(weekday),
+                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
+                        dates.append(scheduledDate)
                     }
                 }
             }
             
         case .weekly:
-            // Once per week for 20 weeks
-            for week in 1...20 {
-                if let date = calendar.date(byAdding: .weekOfYear, value: week, to: now),
-                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                    dates.append(scheduledDate)
+            // Once per week - only schedule if within next 2 days
+            let dayOfWeek = calendar.component(.weekday, from: now)
+            for day in 1...maxDays {
+                if let date = calendar.date(byAdding: .day, value: day, to: now) {
+                    let targetWeekday = calendar.component(.weekday, from: date)
+                    if targetWeekday == dayOfWeek, // Same day of week as today
+                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
+                        dates.append(scheduledDate)
+                        break // Only one per week
+                    }
                 }
             }
             
         case .monthly:
-            // Once per month for 12 months
-            for month in 1...12 {
-                if let date = calendar.date(byAdding: .month, value: month, to: now),
-                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                    dates.append(scheduledDate)
+            // Once per month - only schedule if the monthly date falls within next 2 days
+            let dayOfMonth = calendar.component(.day, from: now)
+            for day in 1...maxDays {
+                if let date = calendar.date(byAdding: .day, value: day, to: now) {
+                    let targetDayOfMonth = calendar.component(.day, from: date)
+                    if targetDayOfMonth == dayOfMonth,
+                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
+                        dates.append(scheduledDate)
+                        break
+                    }
                 }
             }
             
         case .quarterly:
-            // Once per quarter for 2 years
-            for quarter in 1...8 {
-                if let date = calendar.date(byAdding: .month, value: quarter * 3, to: now),
-                   let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
-                    dates.append(scheduledDate)
+            // Once per quarter - very unlikely to fall within 2 days, but check anyway
+            let dayOfYear = calendar.ordinality(of: .day, in: .year, for: now) ?? 0
+            for day in 1...maxDays {
+                if let date = calendar.date(byAdding: .day, value: day, to: now) {
+                    let targetDayOfYear = calendar.ordinality(of: .day, in: .year, for: date) ?? 0
+                    // Quarterly would be roughly every 90 days
+                    if targetDayOfYear % 90 == dayOfYear % 90,
+                       let scheduledDate = calendar.date(bySettingHour: notificationHour, minute: 0, second: 0, of: date) {
+                        dates.append(scheduledDate)
+                        break
+                    }
                 }
             }
         }
         
-        // Limit to 20 notifications per person to stay well under iOS's 64 limit
-        return Array(dates.prefix(20))
+        // Return all dates (no artificial limit since we're only looking at 2 days)
+        return dates
     }
     
     // MARK: - Debug and Enumeration Methods
@@ -250,6 +271,71 @@ class NotificationManager: ObservableObject {
             print("Body: \(request.content.body)")
             print("Scheduled: \(triggerDate?.formatted() ?? "Unknown")")
             print("---")
+        }
+    }
+    
+    // MARK: - Refresh Methods
+    
+    /// Refresh notifications for all people when app becomes active
+    func refreshNotificationsForAllPeople(_ people: [lowkeyPerson]) {
+        print("🔄 Refreshing notifications for \(people.count) people...")
+        
+        Task {
+            let currentCount = await getNotificationCount()
+            print("📊 Current pending notifications: \(currentCount)")
+            
+            // If we're getting close to the limit, don't add more
+            if currentCount >= 50 {
+                print("⚠️ Too many pending notifications (\(currentCount)), skipping refresh")
+                return
+            }
+            
+            for person in people {
+                await refreshNotificationsForPerson(person)
+            }
+            
+            let finalCount = await getNotificationCount()
+            print("🔄 Refresh complete. Total notifications: \(finalCount)")
+        }
+    }
+    
+    /// Check if a person needs more notifications and refresh if needed
+    private func refreshNotificationsForPerson(_ person: lowkeyPerson) async {
+        let upcomingNotifications = await getUpcomingNotificationsForPerson(person)
+        let notificationsInNext2Days = upcomingNotifications.filter { notification in
+            let twoDaysFromNow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
+            return notification.date <= twoDaysFromNow
+        }
+        
+        print("📊 \(person.name) has \(notificationsInNext2Days.count) notifications in next 2 days")
+        
+        // If they have fewer than expected for their frequency, refresh them
+        let expectedMinimum = getExpectedNotificationsInTwoDays(for: person.nudgeFrequency)
+        if notificationsInNext2Days.count < expectedMinimum {
+            print("🔄 Refreshing notifications for \(person.name) (\(notificationsInNext2Days.count) < \(expectedMinimum))")
+            scheduleNotifications(for: person)
+        } else {
+            print("✅ \(person.name) has sufficient notifications")
+        }
+    }
+    
+    /// Calculate how many notifications we expect for a frequency in a 2-day window
+    private func getExpectedNotificationsInTwoDays(for frequency: NudgeFrequency) -> Int {
+        switch frequency {
+        case .fewPerDay:
+            return 3 // At least 3 notifications (could be up to 6)
+        case .daily:
+            return 1 // At least 1 notification (could be 2)
+        case .alternateDays:
+            return 1 // Maybe 1 in 2 days
+        case .fewPerWeek:
+            return 1 // Roughly 1 every 2-3 days
+        case .weekly:
+            return 0 // Once per week, unlikely to have one in 2 days
+        case .monthly:
+            return 0 // Once per month, very unlikely
+        case .quarterly:
+            return 0 // Once per quarter, extremely unlikely
         }
     }
 }
