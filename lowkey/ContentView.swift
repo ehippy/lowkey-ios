@@ -11,15 +11,22 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var people: [lowkeyPerson]
+    @State private var showingAddPerson = false
 
     var body: some View {
         NavigationSplitView {
             List {
                 ForEach(people) { person in
                     NavigationLink {
-                        Text(person.name)
+                        PersonDetailView(person: person)
                     } label: {
-                        Text(person.name)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(person.name)
+                                .font(.headline)
+                            Text(person.relationshipType.displayName)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 .onDelete(perform: deleteItems)
@@ -35,16 +42,29 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            Text("Select an item")
+            VStack(spacing: 20) {
+                Image(systemName: "person.circle")
+                    .font(.system(size: 60))
+                    .foregroundColor(.secondary)
+                
+                Text("Select a person")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+                
+                Text("Choose someone from the list to view their details")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+        }
+        .sheet(isPresented: $showingAddPerson) {
+            AddPersonView()
         }
     }
 
     private func addPerson() {
-        
-//        withAnimation {
-//            let newPerson = lowkeyPerson()
-//            modelContext.insert(newItem)
-//        }
+        showingAddPerson = true
     }
 
     private func deleteItems(offsets: IndexSet) {

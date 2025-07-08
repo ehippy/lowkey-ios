@@ -30,19 +30,25 @@ enum RelationshipType: String, CaseIterable, Codable, Identifiable {
 }
 
 enum NudgeFrequency: String, CaseIterable, Codable, Identifiable {
+    case fewPerDay
     case daily
+    case alternateDays
     case fewPerWeek
     case weekly
-    case alternateDays
+    case monthly
+    case quarterly
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .fewPerDay: return "A Few Times a Day"
         case .daily: return "Daily"
+        case .alternateDays: return "Every Other Day"
         case .fewPerWeek: return "A Few Times a Week"
         case .weekly: return "Weekly"
-        case .alternateDays: return "Every Other Day"
+        case .monthly: return "Monthly"
+        case .quarterly: return "Quarterly"
         }
     }
 }
