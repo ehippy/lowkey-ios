@@ -48,8 +48,9 @@ struct EditPersonView: View {
                             }
                         }
                         
-                        VStack(alignment: .leading, spacing: 4) {
-                            PhotosPicker("Choose Photo", selection: $selectedPhoto, matching: .images)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(profileImage != nil ? "Tap photo to change" : "Tap to add photo")
+                                .font(.caption)
                                 .foregroundColor(.blue)
                             
                             if profileImage != nil {
