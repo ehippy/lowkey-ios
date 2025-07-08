@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PersonDetailView: View {
     let person: lowkeyPerson
+    @State private var showingEditView = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -35,6 +36,16 @@ struct PersonDetailView: View {
         }
         .padding()
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Edit") {
+                    showingEditView = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditView) {
+            EditPersonView(person: person)
+        }
     }
 }
 
