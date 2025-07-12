@@ -136,10 +136,22 @@ struct EditPersonView: View {
         person.nudgeFrequency = nudgeFrequency
         person.setPhoto(profileImage)
         
-        // Schedule notifications for this person
-        NotificationManager.shared.scheduleNotifications(for: person)
+        // Trigger fresh notification refresh for all people
+        Task {
+            await triggerFreshNotificationRefresh()
+        }
         
         dismiss()
+    }
+    
+    private func triggerFreshNotificationRefresh() async {
+        let descriptor = FetchDescriptor<lowkeyPerson>()
+        do {
+            let people = try person.modelContext?.fetch(descriptor) ?? []
+            await NotificationManager.shared.refreshAllNotifications(people)
+        } catch {
+            print("❌ Error fetching people for notification refresh: \(error)")
+        }
     }
 }
 

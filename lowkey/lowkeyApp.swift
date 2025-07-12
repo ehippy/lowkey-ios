@@ -42,16 +42,21 @@ struct lowkeyApp: App {
     }
     
     private func refreshNotificationsWhenActive() {
-        print("🔄 App became active - refreshing notifications...")
+        Task {
+            await performFreshNotificationRefresh()
+        }
+    }
+    
+    private func performFreshNotificationRefresh() async {
+        print("🔄 App became active - starting fresh notification refresh...")
         
-        // Get all people from the model container
         let context = sharedModelContainer.mainContext
         let descriptor = FetchDescriptor<lowkeyPerson>()
         
         do {
             let people = try context.fetch(descriptor)
-            print("📊 Found \(people.count) people for notification refresh")
-            NotificationManager.shared.refreshNotificationsForAllPeople(people)
+            print("📊 Found \(people.count) people for fresh refresh")
+            await NotificationManager.shared.refreshAllNotifications(people)
         } catch {
             print("❌ Error fetching people for refresh: \(error)")
         }

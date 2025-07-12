@@ -236,7 +236,7 @@ class NotificationManager: ObservableObject {
         let requests = await getAllPendingNotifications()
         print("=== All Pending Notifications (\(requests.count)) ===")
         
-        let sortedRequests = requests.sorted { 
+        let sortedRequests = requests.sorted {
             let date1 = ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? Date.distantFuture
             let date2 = ($1.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? Date.distantFuture
             return date1 < date2
@@ -257,66 +257,140 @@ class NotificationManager: ObservableObject {
     
     // MARK: - Refresh Methods
     
-    /// Refresh notifications for all people when app becomes active
-    func refreshNotificationsForAllPeople(_ people: [lowkeyPerson]) {
-        print("🔄 Refreshing notifications for \(people.count) people...")
+    /// Universal refresh method - always cancels all notifications and reschedules from scratch
+    func refreshAllNotifications(_ people: [lowkeyPerson]) async {
+        print("🔄 Starting fresh notification refresh for \(people.count) people...")
         
-        Task {
-            let currentCount = await getNotificationCount()
-            print("📊 Current pending notifications: \(currentCount)")
+        // Step 1: Cancel ALL notifications
+        print("🗑️ Canceling all existing notifications...")
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        print("✅ All notifications canceled")
+        
+        // Step 2: Schedule notifications for all people using global prioritization
+        await scheduleNotificationsForAllPeople(people)
+    }
+    
+    /// Schedule notifications for all people with priority-based selection
+    private func scheduleNotificationsForAllPeople(_ people: [lowkeyPerson]) async {
+        var notificationCandidates: [(person: lowkeyPerson, date: Date, priority: Double)] = []
+        
+        // Generate all possible notifications
+        for person in people {
+            let dates = getSmartScheduleDates(for: person)
+            let basePriority = getRelationshipPriority(person.relationshipType)
+            let frequencyMultiplier = getFrequencyMultiplier(person.nudgeFrequency)
+            let newPersonBoost = getNewPersonBoost(for: person)
             
-            // If we're getting close to the limit, don't add more
-            if currentCount >= 50 {
-                print("⚠️ Too many pending notifications (\(currentCount)), skipping refresh")
-                return
+            print("📊 \(person.name): \(dates.count) dates, priority \(basePriority), boost \(newPersonBoost)")
+            
+            // Special handling for never-nudged people
+            if dates.isEmpty && person.lastNudgeDate == nil {
+                print("🆕 \(person.name): Creating early notification for new person")
+                let earlyDate = Calendar.current.date(byAdding: .hour, value: Int.random(in: 2...4), to: Date()) ?? Date()
+                let urgencyScore = getUrgencyScore(for: earlyDate)
+                let finalPriority = basePriority * frequencyMultiplier * newPersonBoost * urgencyScore
+                notificationCandidates.append((person: person, date: earlyDate, priority: finalPriority))
+            } else {
+                for date in dates {
+                    let urgencyScore = getUrgencyScore(for: date)
+                    let finalPriority = basePriority * frequencyMultiplier * newPersonBoost * urgencyScore
+                    notificationCandidates.append((person: person, date: date, priority: finalPriority))
+                }
             }
+        }
+        
+        // Sort by priority and take top 64
+        let sortedCandidates = notificationCandidates.sorted { $0.priority > $1.priority }
+        let topCandidates = Array(sortedCandidates.prefix(64))
+        
+        print("📊 Scheduling top \(topCandidates.count) notifications from \(notificationCandidates.count) candidates")
+        
+        // Schedule the selected notifications
+        for (index, candidate) in topCandidates.enumerated() {
+            let identifier = "\(candidate.person.id.uuidString)-\(index)"
             
-            for person in people {
-                await refreshNotificationsForPerson(person)
+            let content = UNMutableNotificationContent()
+            content.title = "💝 Lowkey"
+            content.body = "Time to reach out to \(candidate.person.name)"
+            content.sound = .default
+            content.userInfo = ["personId": candidate.person.id.uuidString]
+            
+            let trigger = UNCalendarNotificationTrigger(
+                dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: candidate.date),
+                repeats: false
+            )
+            
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            
+            do {
+                try await UNUserNotificationCenter.current().add(request)
+                print("✅ Scheduled notification for \(candidate.person.name) at \(candidate.date.formatted(date: .abbreviated, time: .shortened))")
+            } catch {
+                print("❌ Error scheduling notification: \(error)")
             }
-            
-            let finalCount = await getNotificationCount()
-            print("🔄 Refresh complete. Total notifications: \(finalCount)")
+        }
+        
+        // Update lastNudgeDate for people who got notifications
+        let peopleWithNotifications = Set(topCandidates.map { $0.person.id })
+        for person in people {
+            if peopleWithNotifications.contains(person.id) {
+                person.lastNudgeDate = Date()
+            }
+        }
+        
+        let finalCount = await getNotificationCount()
+        print("🔄 Fresh refresh complete. Total notifications: \(finalCount)")
+    }
+    
+    /// Calculate priority score based on relationship type
+    private func getRelationshipPriority(_ type: RelationshipType) -> Double {
+        switch type {
+        case .romantic, .spouse: return 1.0
+        case .parent, .child: return 0.9
+        case .sibling: return 0.7
+        case .friend: return 0.5
+        case .other: return 0.3
         }
     }
     
-    /// Check if a person needs more notifications and refresh if needed
-    private func refreshNotificationsForPerson(_ person: lowkeyPerson) async {
-        let upcomingNotifications = await getUpcomingNotificationsForPerson(person)
-        let notificationsInNext2Days = upcomingNotifications.filter { notification in
-            let twoDaysFromNow = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
-            return notification.date <= twoDaysFromNow
-        }
-        
-        print("📊 \(person.name) has \(notificationsInNext2Days.count) notifications in next 2 days")
-        
-        // If they have fewer than expected for their frequency, refresh them
-        let expectedMinimum = getExpectedNotificationsInTwoDays(for: person.nudgeFrequency)
-        if notificationsInNext2Days.count < expectedMinimum {
-            print("🔄 Refreshing notifications for \(person.name) (\(notificationsInNext2Days.count) < \(expectedMinimum))")
-            scheduleNotifications(for: person)
-        } else {
-            print("✅ \(person.name) has sufficient notifications")
-        }
-    }
-    
-    /// Calculate how many notifications we expect for a frequency in a 2-day window
-    private func getExpectedNotificationsInTwoDays(for frequency: NudgeFrequency) -> Int {
+    /// Calculate multiplier based on nudge frequency
+    private func getFrequencyMultiplier(_ frequency: NudgeFrequency) -> Double {
         switch frequency {
-        case .fewPerDay:
-            return 3 // At least 3 notifications (could be up to 6)
-        case .daily:
-            return 1 // At least 1 notification (could be 2)
-        case .alternateDays:
-            return 1 // Maybe 1 in 2 days
-        case .fewPerWeek:
-            return 1 // Roughly 1 every 2-3 days
-        case .weekly:
-            return 0 // Once per week, unlikely to have one in 2 days
-        case .monthly:
-            return 0 // Once per month, very unlikely
-        case .quarterly:
-            return 0 // Once per quarter, extremely unlikely
+        case .fewPerDay: return 1.0
+        case .daily: return 0.8
+        case .alternateDays: return 0.6
+        case .fewPerWeek: return 0.4
+        case .weekly: return 0.3
+        case .monthly: return 0.2
+        case .quarterly: return 0.1
+        }
+    }
+    
+    /// Calculate urgency score based on how soon the notification is due
+    private func getUrgencyScore(for date: Date) -> Double {
+        let timeInterval = date.timeIntervalSince(Date())
+        let hoursUntil = timeInterval / 3600
+        
+        if hoursUntil <= 1 { return 1.0 }      // Due very soon
+        if hoursUntil <= 6 { return 0.9 }      // Due today
+        if hoursUntil <= 24 { return 0.7 }     // Due tomorrow
+        return 0.5                              // Due later
+    }
+    
+    /// Calculate new person boost - heavily prioritize people who have never been nudged
+    private func getNewPersonBoost(for person: lowkeyPerson) -> Double {
+        if person.lastNudgeDate == nil {
+            return 2.0  // Double the priority for never-nudged people
+        }
+        return 1.0  // No boost for people who have been nudged before
+    }
+    
+    // MARK: - Legacy Methods (keeping for backward compatibility)
+    
+    /// Legacy method - now just calls the unified refresh
+    func refreshNotificationsForAllPeople(_ people: [lowkeyPerson]) {
+        Task {
+            await refreshAllNotifications(people)
         }
     }
 }
