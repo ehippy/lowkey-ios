@@ -16,6 +16,9 @@ struct ContentView: View {
     @State private var showingDeleteConfirmation = false
     @StateObject private var notificationMonitor = InAppNotificationMonitor.shared
     @State private var showingUpcomingNotifications = false
+    @State private var generatedNudge: String?
+    @State private var showingNudge = false
+    @State private var nudgePersonName: String?
 
     var body: some View {
         NavigationSplitView {
@@ -47,6 +50,13 @@ struct ContentView: View {
                             }
                             
                             Spacer()
+                        }
+                    }
+                    .contextMenu {
+                        Button {
+                            generateNudge(for: person)
+                        } label: {
+                            Label("Generate Nudge", systemImage: "sparkles")
                         }
                     }
                 }
@@ -141,6 +151,24 @@ struct ContentView: View {
         .onDisappear {
             notificationMonitor.stopMonitoring()
         }
+        .alert(nudgePersonName.map { "Nudge for \($0)" } ?? "Your Nudge", isPresented: $showingNudge, presenting: generatedNudge) { nudge in
+            Button("Copy to Clipboard") {
+                UIPasteboard.general.string = nudge
+            }
+            Button("Done", role: .cancel) {
+                generatedNudge = nil
+                nudgePersonName = nil
+            }
+        } message: { nudge in
+            Text(nudge)
+        }
+    }
+    
+    private func generateNudge(for person: lowkeyPerson) {
+        let nudge = NudgeContentGenerator.shared.generateNudge(for: person)
+        generatedNudge = nudge.body
+        nudgePersonName = person.name
+        showingNudge = true
     }
 
     private func addPerson() {

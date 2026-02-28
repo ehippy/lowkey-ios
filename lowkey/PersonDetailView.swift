@@ -13,6 +13,8 @@ struct PersonDetailView: View {
     @State private var showingEditView = false
     @State private var upcomingNotifications: [(date: Date, content: String)] = []
     @State private var isLoadingNotifications = true
+    @State private var generatedNudge: String?
+    @State private var showingNudge = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -42,6 +44,20 @@ struct PersonDetailView: View {
                     .font(.title2)
                     .foregroundColor(.secondary)
             }
+            
+            Button(action: generateNudge) {
+                HStack {
+                    Image(systemName: "sparkles")
+                    Text("Generate Nudge")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.accentColor)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+            .padding(.vertical, 8)
             
             VStack(alignment: .leading, spacing: 8) {
                 Text("Mindfulness Frequency")
@@ -122,6 +138,22 @@ struct PersonDetailView: View {
         .refreshable {
             await loadNotifications()
         }
+        .alert("Your Nudge", isPresented: $showingNudge, presenting: generatedNudge) { nudge in
+            Button("Copy to Clipboard") {
+                UIPasteboard.general.string = nudge
+            }
+            Button("Done", role: .cancel) {
+                generatedNudge = nil
+            }
+        } message: { nudge in
+            Text(nudge)
+        }
+    }
+    
+    private func generateNudge() {
+        let nudge = NudgeContentGenerator.shared.generateNudge(for: person)
+        generatedNudge = nudge.body
+        showingNudge = true
     }
     
     private func loadNotifications() async {
