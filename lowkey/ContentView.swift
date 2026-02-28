@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var generatedNudge: String?
     @State private var showingNudge = false
     @State private var nudgePersonName: String?
+    @State private var selectedPerson: lowkeyPerson?
 
     var body: some View {
         NavigationSplitView {
@@ -112,8 +113,7 @@ struct ContentView: View {
                     onTap: {
                         // Find the person and navigate to their detail view
                         if let person = people.first(where: { $0.id == notification.personId }) {
-                            // TODO: Navigate to PersonDetailView
-                            // For now, just dismiss the notification
+                            selectedPerson = person
                             notificationMonitor.dismissCurrentNotification()
                         }
                     }
@@ -161,6 +161,18 @@ struct ContentView: View {
             }
         } message: { nudge in
             Text(nudge)
+        }
+        .sheet(item: $selectedPerson) { person in
+            NavigationView {
+                PersonDetailView(person: person)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                selectedPerson = nil
+                            }
+                        }
+                    }
+            }
         }
     }
     
