@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var showingAddPerson = false
     @State private var personToDelete: lowkeyPerson?
     @State private var showingDeleteConfirmation = false
+    @StateObject private var notificationMonitor = InAppNotificationMonitor.shared
+    @State private var showingUpcomingNotifications = false
 
     var body: some View {
         NavigationSplitView {
@@ -89,6 +91,55 @@ struct ContentView: View {
             }
         } message: { person in
             Text("Are you sure you want to delete \(person.name)? This action cannot be undone.")
+        }
+        .overlay(alignment: .top) {
+            if let notification = notificationMonitor.currentNotification {
+                InAppNotificationBanner(
+                    notification: notification,
+                    onDismiss: {
+                        notificationMonitor.dismissCurrentNotification()
+                    },
+                    onTap: {
+                        // Find the person and navigate to their detail view
+                        if let person = people.first(where: { $0.id == notification.personId }) {
+                            // TODO: Navigate to PersonDetailView
+                            // For now, just dismiss the notification
+                            notificationMonitor.dismissCurrentNotification()
+                        }
+                    }
+                )
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(), value: notificationMonitor.currentNotification)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if !notificationMonitor.upcomingNotifications.isEmpty {
+                    Button {
+                        showingUpcomingNotifications = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bell.badge")
+                            Text("\(notificationMonitor.upcomingNotifications.count)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingUpcomingNotifications) {
+            UpcomingNotificationsSheet(
+                notifications: notificationMonitor.upcomingNotifications,
+                isPresented: $showingUpcomingNotifications
+            )
+        }
+        .onAppear {
+            notificationMonitor.startMonitoring(people: people)
+        }
+        .onDisappear {
+            notificationMonitor.stopMonitoring()
         }
     }
 
