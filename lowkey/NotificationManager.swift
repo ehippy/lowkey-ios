@@ -51,9 +51,10 @@ class NotificationManager: ObservableObject {
         for (index, date) in scheduleDates.enumerated() {
             let identifier = "\(person.id.uuidString)-\(index)"
             
+            let nudge = NudgeContentGenerator.shared.generateNudge(for: person)
             let content = UNMutableNotificationContent()
-            content.title = "💝 Lowkey"
-            content.body = "Time to reach out to \(person.name)"
+            content.title = nudge.title
+            content.body = nudge.body
             content.sound = .default
             content.userInfo = ["personId": person.id.uuidString]
             
@@ -309,9 +310,10 @@ class NotificationManager: ObservableObject {
         for (index, candidate) in topCandidates.enumerated() {
             let identifier = "\(candidate.person.id.uuidString)-\(index)"
             
+            let nudge = NudgeContentGenerator.shared.generateNudge(for: candidate.person)
             let content = UNMutableNotificationContent()
-            content.title = "💝 Lowkey"
-            content.body = "Time to reach out to \(candidate.person.name)"
+            content.title = nudge.title
+            content.body = nudge.body
             content.sound = .default
             content.userInfo = ["personId": candidate.person.id.uuidString]
             
