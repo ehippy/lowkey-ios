@@ -53,7 +53,7 @@ class NotificationManager: ObservableObject {
             
             let content = UNMutableNotificationContent()
             content.title = "💝 Lowkey"
-            content.body = "Time to reach out to \(person.name)"
+            content.body = NudgeContentGenerator.generateMessage(for: person)
             content.sound = .default
             content.userInfo = ["personId": person.id.uuidString]
             
@@ -311,7 +311,7 @@ class NotificationManager: ObservableObject {
             
             let content = UNMutableNotificationContent()
             content.title = "💝 Lowkey"
-            content.body = "Time to reach out to \(candidate.person.name)"
+            content.body = NudgeContentGenerator.generateMessage(for: candidate.person)
             content.sound = .default
             content.userInfo = ["personId": candidate.person.id.uuidString]
             
@@ -392,5 +392,50 @@ class NotificationManager: ObservableObject {
         Task {
             await refreshAllNotifications(people)
         }
+    }
+    
+    // MARK: - Immediate Nudge
+    
+    /// Triggers an immediate nudge for a person:
+    /// 1. Sends a notification right now
+    /// 2. Marks the person as nudged
+    /// 3. Reschedules future notifications
+    func immediateNudge(for person: lowkeyPerson) async {
+        print("⚡ Immediate nudge for \(person.name)")
+        
+        // Cancel all pending notifications for this person
+        cancelNotifications(for: person)
+        
+        // Schedule notifications from now, using a compressed window
+        // (we need at least 1 notification for the immediate one)
+        let now = Date()
+        let identifier = "\(person.id.uuidString)-immediate"
+        
+        let content = UNMutableNotificationContent()
+        content.title = "💝 Lowkey — Now"
+        content.body = "🔥 Right now: \(NudgeContentGenerator.generateMessage(for: person))"
+        content.sound = .default
+        content.userInfo = ["personId": person.id.uuidString]
+        
+        // Trigger immediately using a time interval of 1 second
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            print("✅ Immediate notification scheduled for \(person.name)")
+        } catch {
+            print("❌ Error scheduling immediate notification: \(error)")
+            return
+        }
+        
+        // Mark as nudged and reschedule future notifications
+        person.markAsNudged()
+        
+        // Reschedule future notifications for this person
+        scheduleNotifications(for: person)
+        
+        print("✅ Nudge complete for \(person.name)")
     }
 }

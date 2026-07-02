@@ -13,6 +13,8 @@ struct PersonDetailView: View {
     @State private var showingEditView = false
     @State private var upcomingNotifications: [(date: Date, content: String)] = []
     @State private var isLoadingNotifications = true
+    @State private var isNudging = false
+    @State private var showNudgeConfirmation = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -95,6 +97,50 @@ struct PersonDetailView: View {
                     }
                     .padding(.top, 4)
                 }
+            }
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Last Nudged")
+                    .font(.headline)
+                
+                if let lastNudge = person.lastNudgeDate {
+                    Text(lastNudge.formatted(date: .abbreviated, time: .shortened))
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Never nudged — time to start!")
+                        .font(.body)
+                        .foregroundColor(.orange)
+                        .italic()
+                }
+            }
+            
+            // MARK: - Nudge Now Button
+            Button {
+                showNudgeConfirmation = true
+            } label: {
+                HStack {
+                    Image(systemName: "hand.thumbsup.fill")
+                    Text("Nudge Now")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .foregroundColor(.blue)
+                .cornerRadius(12)
+            }
+            .confirmationDialog("Nudge \(person.name)?", isPresented: $showNudgeConfirmation, titleVisibility: .visible) {
+                Button("Send Immediate Nudge", role: .none) {
+                    Task {
+                        isNudging = true
+                        await NotificationManager.shared.immediateNudge(for: person)
+                        await loadNotifications()
+                        isNudging = false
+                    }
+                }
+            } message: {
+                Text("This will send a notification right away and reschedule future nudges.")
             }
             
             Spacer()

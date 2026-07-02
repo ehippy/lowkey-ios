@@ -91,7 +91,7 @@ struct AddPersonView: View {
         let descriptor = FetchDescriptor<lowkeyPerson>()
         do {
             let people = try modelContext.fetch(descriptor)
-//            await NotificationManager.refreshAllNotifications(people)
+            await NotificationManager.shared.refreshAllNotifications(people)
         } catch {
             print("❌ Error fetching people for notification refresh: \(error)")
         }
