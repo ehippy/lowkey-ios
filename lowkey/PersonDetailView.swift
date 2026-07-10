@@ -100,18 +100,17 @@ struct PersonDetailView: View {
             }
             
             VStack(alignment: .leading, spacing: 8) {
-                Text("Last Nudged")
+                Text("Nudge Streak")
                     .font(.headline)
                 
-                if let lastNudge = person.lastNudgeDate {
-                    Text(lastNudge.formatted(date: .abbreviated, time: .shortened))
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("Never nudged — time to start!")
-                        .font(.body)
-                        .foregroundColor(.orange)
-                        .italic()
+                Text(person.streakDescription)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                
+                if person.currentStreak > 0 && person.longestStreak > person.currentStreak {
+                    Text("Previous best: \(person.longestStreak) day\(person.longestStreak == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.6))
                 }
             }
             
