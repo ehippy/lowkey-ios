@@ -17,17 +17,20 @@ class lowkeyPerson {
     var nudgeFrequency: NudgeFrequency
     var photoData: Data?
     var lastNudgeDate: Date?
+    var nudgeHistory: [Date]
 
     init(name: String,
          relationshipType: RelationshipType,
          nudgeFrequency: NudgeFrequency,
-         photoData: Data? = nil) {
+         photoData: Data? = nil,
+         nudgeHistory: [Date] = []) {
         self.id = UUID()
         self.name = name
         self.relationshipType = relationshipType
         self.nudgeFrequency = nudgeFrequency
         self.photoData = photoData
         self.lastNudgeDate = nil // Will be set when first notification is scheduled
+        self.nudgeHistory = nudgeHistory
     }
 }
 
@@ -127,5 +130,94 @@ extension lowkeyPerson {
     /// Mark that this person was nudged (call when notification fires or user manually reaches out)
     func markAsNudged() {
         lastNudgeDate = Date()
+        if !nudgeHistory.contains(where: { Calendar.current.isDate($0, inSameDayAs: Date()) }) {
+            nudgeHistory.append(Date())
+        }
+    }
+    
+    /// Returns a calendar-day-deduplicated history of nudge dates, newest first.
+    private var deduplicatedNudgeHistory: [Date] {
+        let today = Calendar.current.startOfDay(for: Date())
+        var seenDays: [Date] = []
+        var result: [Date] = []
+        
+        // Sort history descending
+        let sorted = nudgeHistory.sorted { $0 > $1 }
+        for date in sorted {
+            let day = Calendar.current.startOfDay(for: date)
+            if !seenDays.contains(day) {
+                seenDays.append(day)
+                result.append(date)
+            }
+            if seenDays.count >= 365 { break } // Cap at 1 year of unique days
+        }
+        return result
+    }
+    
+    /// Current streak: consecutive calendar days ending today or yesterday.
+    var currentStreak: Int {
+        let deduped = deduplicatedNudgeHistory
+        guard !deduped.isEmpty else { return 0 }
+        
+        let today = Calendar.current.startOfDay(for: Date())
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        let mostRecentDay = Calendar.current.startOfDay(for: deduped[0])
+        
+        // Streak must end today or yesterday to be current
+        guard mostRecentDay == today || mostRecentDay == yesterday else { return 0 }
+        
+        var streak = 1
+        for i in 1..<deduped.count {
+            let currentDay = Calendar.current.startOfDay(for: deduped[i])
+            let prevDay = Calendar.current.startOfDay(for: deduped[i - 1])
+            let expectedDay = Calendar.current.date(byAdding: .day, value: -1, to: prevDay)!
+            if currentDay == expectedDay {
+                streak += 1
+            } else {
+                break
+            }
+        }
+        return streak
+    }
+    
+    /// The longest single streak ever recorded (in consecutive calendar days).
+    var longestStreak: Int {
+        let deduped = deduplicatedNudgeHistory
+        guard !deduped.isEmpty else { return 0 }
+        
+        let days = deduped.map { Calendar.current.startOfDay(for: $0) }.sorted(by: >)
+        
+        var longest = 1
+        var current = 1
+        
+        for i in 1..<days.count {
+            let expectedPrev = Calendar.current.date(byAdding: .day, value: -1, to: days[i - 1])!
+            if days[i] == expectedPrev {
+                current += 1
+                longest = max(longest, current)
+            } else {
+                current = 1
+            }
+        }
+        return longest
+    }
+    
+    /// Human-readable streak description.
+    var streakDescription: String {
+        let current = currentStreak
+        let longest = longestStreak
+        
+        if current == 0 {
+            if longest > 0 {
+                return "🏆 Best streak: \(longest) day\(longest == 1 ? "" : "s")"
+            }
+            return "🌱 No streak yet — start nudging!"
+        }
+        
+        var desc = "🔥 Current streak: \(current) day\(current == 1 ? "" : "s")"
+        if longest > current {
+            desc += " (best: \(longest))"
+        }
+        return desc
     }
 }

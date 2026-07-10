@@ -37,11 +37,29 @@ struct ContentView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(person.name)
-                                    .font(.headline)
+                                HStack(spacing: 6) {
+                                    Text(person.name)
+                                        .font(.headline)
+                                    if person.currentStreak > 0 {
+                                        Text("🔥 \(person.currentStreak)")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.orange)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.orange.opacity(0.15))
+                                            .clipShape(Capsule())
+                                    }
+                                }
                                 Text("\(person.relationshipType.displayName) • \(person.nudgeFrequency.displayName)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                if person.currentStreak == 0 && person.longestStreak > 0 {
+                                    Text(person.streakDescription)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary.opacity(0.7))
+                                        .italic()
+                                }
                             }
                             
                             Spacer()
